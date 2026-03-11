@@ -21,7 +21,7 @@ class TestAdversaryConfig:
         cfg = AdversaryConfig()
         assert cfg.model_id == "meta-llama/Llama-3.2-3B-Instruct"
         assert cfg.judge_model_id == "meta-llama/Llama-3.2-3B-Instruct"
-        assert cfg.max_rounds == 5
+        assert cfg.max_rounds == 15
         assert cfg.temperature == 0.7
         assert cfg.max_new_tokens == 512
         assert cfg.load_in_4bit is False
@@ -69,7 +69,7 @@ class TestExperimentConfig:
     def test_model_config_defaults(self):
         cfg = ExperimentConfig()
         assert cfg.model.model_id == "meta-llama/Llama-3.1-8B-Instruct"
-        assert cfg.model.sae_release == "sae_bench_llama_3.1_8b_instruct"
+        assert cfg.model.sae_release == "goodfire-llama-3.1-8b-instruct"
         assert cfg.model.load_in_4bit is True
 
     def test_envelope_config_defaults(self):
