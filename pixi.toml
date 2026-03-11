@@ -1,0 +1,52 @@
+[project]
+name = "sotif-llm"
+version = "0.1.0"
+description = "Mechanistic ODD: Continuous SOTIF Validation of LLMs via Sparse Autoencoders"
+authors = ["Julian Quick"]
+requires-python = ">=3.11"
+
+[dependencies]
+python = "3.11.*"
+
+[pypi-dependencies]
+torch = ">=2.2"
+transformers = ">=4.40"
+peft = ">=0.10"
+bitsandbytes = ">=0.43"
+accelerate = ">=0.30"
+sae-lens = ">=4.0"
+scikit-learn = ">=1.4"
+scipy = ">=1.12"
+numpy = ">=1.26"
+pandas = ">=2.2"
+matplotlib = ">=3.8"
+seaborn = ">=0.13"
+datasets = ">=2.18"
+huggingface-hub = ">=0.22"
+jsonlines = ">=4.0"
+tqdm = ">=4.66"
+pyyaml = ">=6.0"
+
+[tasks]
+# Phase 1: Generate prompt database and compute safe baseline
+generate-prompts = "python -m sotif_llm.prompts.generator"
+extract-baseline = "python -m sotif_llm.experiments.phase1_baseline"
+
+# Phase 2: Silent Killers reward hacking experiment
+run-silent-killers = "python -m sotif_llm.experiments.phase2_reward_hacking"
+
+# Phase 3: REDKWEEN jailbreak experiment
+run-redkween = "python -m sotif_llm.experiments.phase3_jailbreaks"
+
+# Full pipeline
+run-all = "python -m sotif_llm.pipeline"
+
+# Validation & visualization
+train-predictor = "python -m sotif_llm.validation.predictor"
+plot-results = "python -m sotif_llm.visualization"
+
+# Development
+test = "python -m pytest tests/ -v"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

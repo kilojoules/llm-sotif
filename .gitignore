@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.pixi/
+data/
+experiments/
+*.npz
+*.safetensors
+.env
+*.key
+*.token
+.DS_Store
