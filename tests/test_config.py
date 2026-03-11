@@ -9,6 +9,7 @@ from sotif_llm.config import (
     AdversaryConfig,
     EnvelopeConfig,
     ExperimentConfig,
+    GCGConfig,
     ModelConfig,
     PromptConfig,
     ValidationConfig,
@@ -36,6 +37,28 @@ class TestAdversaryConfig:
         assert cfg.model_id == "meta-llama/Llama-3.2-1B-Instruct"
         assert cfg.max_rounds == 10
         assert cfg.temperature == 0.5
+
+    def test_has_gcg_config(self):
+        cfg = AdversaryConfig()
+        assert hasattr(cfg, "gcg")
+        assert isinstance(cfg.gcg, GCGConfig)
+
+
+class TestGCGConfig:
+
+    def test_defaults(self):
+        cfg = GCGConfig()
+        assert cfg.enabled is True
+        assert cfg.num_steps == 250
+        assert cfg.search_width == 512
+        assert cfg.topk == 256
+        assert cfg.seed == 42
+
+    def test_custom_values(self):
+        cfg = GCGConfig(num_steps=100, search_width=128, enabled=False)
+        assert cfg.num_steps == 100
+        assert cfg.search_width == 128
+        assert cfg.enabled is False
 
 
 class TestValidationConfigUnsafePrior:

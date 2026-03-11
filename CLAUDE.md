@@ -11,10 +11,11 @@
 
 ```
 src/sotif_llm/
-├── config.py            # Dataclass configs (ExperimentConfig, AdversaryConfig, etc.)
-├── adversary/           # Red-team adversarial loop
+├── config.py            # Dataclass configs (ExperimentConfig, AdversaryConfig, GCGConfig, etc.)
+├── adversary/           # Red-team adversarial loop + GCG
 │   ├── prompts.py       # Seed jailbreak + benign prompts
-│   ├── red_team.py      # Adversary/target loop (Llama 3B)
+│   ├── gcg.py           # GCG suffix optimization (gradient-based jailbreaks)
+│   ├── red_team.py      # Adversary/target loop (Llama 3B) with GCG warm-starts
 │   └── judge.py         # LLM-based safety judge (1B/3B)
 ├── prompts/             # Prompt database (compositional generation)
 │   ├── taxonomy.py      # Design space definition (6D continuous)
@@ -30,7 +31,7 @@ src/sotif_llm/
 │   └── predictor.py     # Quantile GP safety predictor (unsafe prior)
 ├── experiments/
 │   ├── phase1_baseline.py       # Phase 1: Safe ODD
-│   └── phase2_adversarial.py    # Phase 2: Red-team + SAE jailbreak detection
+│   └── phase2_adversarial.py    # Phase 2: GCG + Red-team + SAE jailbreak detection
 ├── visualization.py     # Trust region plots, generation traces
 └── pipeline.py          # End-to-end orchestration (Phase 1 → 2 → GP)
 ```
@@ -38,9 +39,15 @@ src/sotif_llm/
 ## Pipeline
 
 1. **Phase 1**: Safe baseline — benign prompts → SAE features → SOTIF envelope
-2. **Phase 2**: Adversarial jailbreaks — red-team loop (adversary strengthens
-   attacks against target, judge classifies) → 3 response classes
-   (benign, refused, jailbroken) → SAE feature extraction → anomaly analysis
+2. **Phase 2**: Adversarial jailbreaks
+   - **Phase 2a-gcg** (optional): GCG suffix optimization finds gradient-based
+     adversarial suffixes for each seed prompt, producing verified jailbreaks.
+     Uses `nanogcg` (Zou et al., 2023). Disable with `--no-gcg`.
+   - **Phase 2a**: Red-team loop — adversary (3B) strengthens attacks against
+     target (3B), judge classifies. When GCG warm-starts are available, round 0
+     begins from a known-working jailbreak.
+   - **Phase 2b**: SAE feature extraction → 3 response classes
+     (benign, refused, jailbroken) → anomaly analysis
 3. **Phase 3**: Safety predictor — quantile GP with large unsafe prior over
    SAE feature space, trained on labeled data from Phase 2
 
@@ -49,6 +56,17 @@ src/sotif_llm/
 - **SAE target**: `meta-llama/Llama-3.1-8B-Instruct` with SAELens SAEs
 - **Adversary/target**: `meta-llama/Llama-3.2-3B-Instruct` (same model, different roles)
 - **Judge**: `meta-llama/Llama-3.2-3B-Instruct` (or 1B)
+
+## GCG (Greedy Coordinate Gradient)
+
+GCG uses gradient information from the target model to find token-level
+adversarial suffixes that maximize the probability of harmful compliance.
+The suffixes are nonsensical text that reliably bypasses safety training.
+
+- Requires `nanogcg` (`pip install nanogcg`)
+- Needs fp16 model weights (no 4-bit quantization) for gradient computation
+- Default: 250 steps, search_width=512, topk=256
+- Configure via `GCGConfig` or CLI: `--gcg-steps 500`, `--no-gcg`
 
 ## Unsafe Behavior Categories
 

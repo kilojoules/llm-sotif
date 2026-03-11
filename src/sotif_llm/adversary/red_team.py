@@ -235,6 +235,7 @@ class RedTeamRunner:
         self,
         jailbreak_prompts: list[dict] | None = None,
         benign_prompts: list[dict] | None = None,
+        gcg_warm_starts: dict[str, str] | None = None,
     ) -> RedTeamResult:
         """Run the full red-team campaign.
 
@@ -245,6 +246,11 @@ class RedTeamRunner:
           4. Adversary refines based on outcome
           5. Repeat for max_rounds
 
+        If ``gcg_warm_starts`` is provided (a mapping of seed_id to
+        GCG-optimized prompt), round 0 uses the GCG prompt instead
+        of the raw seed.  This ensures the adversary starts from a
+        known-effective attack.
+
         Also collects benign responses for the safe baseline.
         """
         if self._model is None:
@@ -254,6 +260,8 @@ class RedTeamRunner:
             jailbreak_prompts = JAILBREAK_PROMPTS
         if benign_prompts is None:
             benign_prompts = BENIGN_PROMPTS
+        if gcg_warm_starts is None:
+            gcg_warm_starts = {}
         result = RedTeamResult()
 
         # --- Red-team loop ---
@@ -263,18 +271,22 @@ class RedTeamRunner:
             seed_prompt = seed["prompt"]
             logger.info(f"Red-teaming seed: {seed_id}")
 
-            # Round 0: direct attack (no adversary rewrite)
-            response = self._target_respond(seed_prompt)
-            is_unsafe = self._judge.judge(seed_prompt, response)
+            # Round 0: use GCG warm-start if available, else direct attack
+            round_0_attack = gcg_warm_starts.get(seed_id, seed_prompt)
+            if seed_id in gcg_warm_starts:
+                logger.info(f"  Using GCG warm-start for round 0")
+
+            response = self._target_respond(round_0_attack)
+            is_unsafe = self._judge.judge(round_0_attack, response)
             result.episodes.append(Episode(
                 seed_id=seed_id, seed_category=seed_category,
-                round=0, attack=seed_prompt, response=response,
+                round=0, attack=round_0_attack, response=response,
                 is_unsafe=is_unsafe,
             ))
-            logger.info(f"  Round 0 (direct): {'UNSAFE' if is_unsafe else 'SAFE'}")
+            logger.info(f"  Round 0 {'(GCG)' if seed_id in gcg_warm_starts else '(direct)'}: {'UNSAFE' if is_unsafe else 'SAFE'}")
 
             # Rounds 1..max_rounds: adversary-strengthened attacks
-            prev_attack = seed_prompt
+            prev_attack = round_0_attack
             prev_response = response
             prev_unsafe = is_unsafe
 

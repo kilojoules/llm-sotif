@@ -3,15 +3,20 @@
 Replaces the Silent Killers (reward hacking) phase with a direct
 adversarial evaluation:
 
-  1. Run a red-team loop: adversary (3B) strengthens jailbreak prompts
-     against a target (3B), classified by a judge (1B/3B).
-  2. Collect three response classes:
+  1. (Optional) Run GCG suffix optimization to find verified
+     jailbreak prompts for each seed.  These gradient-optimised
+     adversarial suffixes bypass safety alignment reliably.
+  2. Run a red-team loop: adversary (3B) strengthens jailbreak prompts
+     against a target (3B), classified by a judge (1B/3B).  When GCG
+     warm-starts are available, round 0 begins from a known-working
+     attack instead of the raw seed prompt.
+  3. Collect three response classes:
        - Benign responses (safe baseline)
        - Jailbreak refusals (model says no)
        - Successful jailbreaks (harmful compliance)
-  3. Extract SAE features from the target model's activations for all
+  4. Extract SAE features from the target model's activations for all
      three classes.
-  4. Train a GP safety predictor with a large unsafe prior over the
+  5. Train a GP safety predictor with a large unsafe prior over the
      SAE feature space.
 
 The hypothesis: successful jailbreaks produce a mechanistically
@@ -28,6 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..adversary.gcg import GCGRunner
 from ..adversary.red_team import RedTeamResult, RedTeamRunner
 from ..config import ExperimentConfig
 from ..envelope.baseline import BaselineComputer, SafeBaseline
@@ -37,8 +43,49 @@ from ..sae.extractor import SAEExtractor
 logger = logging.getLogger(__name__)
 
 
-def run_red_team_campaign(cfg: ExperimentConfig) -> RedTeamResult:
-    """Run the adversarial red-team campaign and save results."""
+def run_gcg_campaign(cfg: ExperimentConfig) -> dict[str, str]:
+    """Run GCG suffix optimization and return warm-start prompts.
+
+    Returns a mapping ``{seed_id: gcg_full_prompt}`` for seeds where
+    GCG found a verified jailbreak.  Results are saved to
+    ``<experiment_dir>/phase2/gcg_results.json``.
+    """
+    from ..adversary.prompts import JAILBREAK_PROMPTS
+
+    exp_dir = cfg.experiment_dir / "phase2"
+    exp_dir.mkdir(parents=True, exist_ok=True)
+
+    gcg_cfg = cfg.adversary.gcg
+    runner = GCGRunner(
+        model_id=cfg.adversary.model_id,
+        device=cfg.model.device,
+        num_steps=gcg_cfg.num_steps,
+        search_width=gcg_cfg.search_width,
+        topk=gcg_cfg.topk,
+        seed=gcg_cfg.seed,
+    )
+
+    campaign = runner.run(JAILBREAK_PROMPTS)
+    campaign.save(exp_dir / "gcg_results.json")
+    runner.unload()
+
+    warm_starts = campaign.get_warm_starts()
+    logger.info(
+        f"GCG produced {len(warm_starts)}/{len(JAILBREAK_PROMPTS)} "
+        f"verified warm-starts"
+    )
+    return warm_starts
+
+
+def run_red_team_campaign(
+    cfg: ExperimentConfig,
+    gcg_warm_starts: dict[str, str] | None = None,
+) -> RedTeamResult:
+    """Run the adversarial red-team campaign and save results.
+
+    If *gcg_warm_starts* is provided, the adversary loop uses
+    GCG-optimized prompts for round 0 instead of the raw seeds.
+    """
     exp_dir = cfg.experiment_dir / "phase2"
     exp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -52,7 +99,7 @@ def run_red_team_campaign(cfg: ExperimentConfig) -> RedTeamResult:
         temperature=cfg.adversary.temperature,
     )
 
-    result = runner.run()
+    result = runner.run(gcg_warm_starts=gcg_warm_starts)
     result.save(exp_dir / "red_team_results.json")
     runner.unload()
     return result
@@ -191,11 +238,20 @@ def extract_and_classify(cfg: ExperimentConfig) -> dict:
 def run_phase2(cfg: ExperimentConfig) -> dict:
     """Execute Phase 2: Adversarial Jailbreak Detection.
 
-    Step 1: Red-team campaign (adversary + target + judge)
-    Step 2: SAE feature extraction + anomaly analysis
+    Step 1 (optional): GCG suffix optimization for warm-starts
+    Step 2: Red-team campaign (adversary + target + judge)
+    Step 3: SAE feature extraction + anomaly analysis
     """
+    gcg_warm_starts = None
+
+    if cfg.adversary.gcg.enabled:
+        logger.info("Phase 2a-gcg: Running GCG suffix optimization...")
+        gcg_warm_starts = run_gcg_campaign(cfg)
+    else:
+        logger.info("GCG warm-start disabled, using raw seed prompts.")
+
     logger.info("Phase 2a: Running red-team campaign...")
-    rt_result = run_red_team_campaign(cfg)
+    rt_result = run_red_team_campaign(cfg, gcg_warm_starts=gcg_warm_starts)
 
     logger.info("Phase 2b: Extracting SAE features and building safety dataset...")
     summary = extract_and_classify(cfg)

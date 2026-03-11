@@ -26,6 +26,7 @@ huggingface-hub = ">=0.22"
 jsonlines = ">=4.0"
 tqdm = ">=4.66"
 pyyaml = ">=6.0"
+nanogcg = ">=0.2"
 
 [tasks]
 # Phase 1: Generate prompt database and compute safe baseline

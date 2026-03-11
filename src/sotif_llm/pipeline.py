@@ -124,6 +124,8 @@ def run_pipeline(cfg: ExperimentConfig) -> None:
             "adversary_model": cfg.adversary.model_id,
             "judge_model": cfg.adversary.judge_model_id,
             "max_rounds": cfg.adversary.max_rounds,
+            "gcg_enabled": cfg.adversary.gcg.enabled,
+            "gcg_num_steps": cfg.adversary.gcg.num_steps,
             "envelope_method": cfg.envelope.method,
             "prior_mean_range": list(cfg.validation.prior_mean_range),
         }, f, indent=2)

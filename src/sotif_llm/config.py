@@ -30,6 +30,23 @@ class ModelConfig:
 
 
 @dataclass
+class GCGConfig:
+    """GCG (Greedy Coordinate Gradient) suffix optimization parameters.
+
+    GCG finds adversarial token suffixes that bypass safety alignment
+    by optimizing against the target model's own loss landscape.
+    The resulting suffixed prompts serve as warm-start seeds for the
+    adversary rewrite loop.
+    """
+
+    enabled: bool = True
+    num_steps: int = 250
+    search_width: int = 512
+    topk: int = 256
+    seed: int = 42
+
+
+@dataclass
 class AdversaryConfig:
     """Red-team adversary, target, and judge configuration."""
 
@@ -42,6 +59,8 @@ class AdversaryConfig:
     max_rounds: int = 15
     max_new_tokens: int = 512
     temperature: float = 0.7
+    # GCG suffix optimization (warm-start for adversary loop)
+    gcg: GCGConfig = field(default_factory=GCGConfig)
 
 
 @dataclass
@@ -134,6 +153,9 @@ class ExperimentConfig:
         parser.add_argument("--adversary-model", default="meta-llama/Llama-3.2-3B-Instruct")
         parser.add_argument("--judge-model", default="meta-llama/Llama-3.2-3B-Instruct")
         parser.add_argument("--max-rounds", type=int, default=5)
+        parser.add_argument("--gcg-steps", type=int, default=250)
+        parser.add_argument("--no-gcg", action="store_true",
+                            help="Disable GCG warm-start optimization")
         parser.add_argument("--n-benign", type=int, default=5000)
         parser.add_argument("--confidence", type=float, default=0.95)
         parser.add_argument("--method", default="mahalanobis",
@@ -147,6 +169,8 @@ class ExperimentConfig:
         cfg.adversary.model_id = args.adversary_model
         cfg.adversary.judge_model_id = args.judge_model
         cfg.adversary.max_rounds = args.max_rounds
+        cfg.adversary.gcg.enabled = not args.no_gcg
+        cfg.adversary.gcg.num_steps = args.gcg_steps
         cfg.prompts.n_benign = args.n_benign
         cfg.envelope.confidence_level = args.confidence
         cfg.envelope.method = args.method
