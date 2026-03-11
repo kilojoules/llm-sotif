@@ -39,7 +39,7 @@ class AdversaryConfig:
     judge_model_id: str = "meta-llama/Llama-3.2-3B-Instruct"
     load_in_4bit: bool = False
     # Red-team loop parameters
-    max_rounds: int = 5
+    max_rounds: int = 15
     max_new_tokens: int = 512
     temperature: float = 0.7
 
