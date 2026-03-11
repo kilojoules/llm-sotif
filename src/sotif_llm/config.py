@@ -20,9 +20,9 @@ class ModelConfig:
     """Target LLM and SAE configuration."""
 
     model_id: str = "meta-llama/Llama-3.1-8B-Instruct"
-    sae_release: str = "sae_bench_llama_3.1_8b_instruct"
-    sae_id: str = "layers.16/65536"
-    sae_layer: int = 16
+    sae_release: str = "goodfire-llama-3.1-8b-instruct"
+    sae_id: str = "layer_19"
+    sae_layer: int = 19
     device: str = "cuda"
     dtype: str = "bfloat16"
     load_in_4bit: bool = True
