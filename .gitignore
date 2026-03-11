@@ -7,7 +7,7 @@ dist/
 build/
 .pixi/
 data/
-experiments/
+/experiments/
 *.npz
 *.safetensors
 .env

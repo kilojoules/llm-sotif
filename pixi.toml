@@ -32,11 +32,8 @@ pyyaml = ">=6.0"
 generate-prompts = "python -m sotif_llm.prompts.generator"
 extract-baseline = "python -m sotif_llm.experiments.phase1_baseline"
 
-# Phase 2: Silent Killers reward hacking experiment
-run-silent-killers = "python -m sotif_llm.experiments.phase2_reward_hacking"
-
-# Phase 3: REDKWEEN jailbreak experiment
-run-redkween = "python -m sotif_llm.experiments.phase3_jailbreaks"
+# Phase 2: Adversarial jailbreak detection (red-team + SAE)
+run-adversarial = "python -m sotif_llm.experiments.phase2_adversarial"
 
 # Full pipeline
 run-all = "python -m sotif_llm.pipeline"

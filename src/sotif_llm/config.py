@@ -30,6 +30,21 @@ class ModelConfig:
 
 
 @dataclass
+class AdversaryConfig:
+    """Red-team adversary, target, and judge configuration."""
+
+    # Adversary and target model (same weights, different system prompts)
+    model_id: str = "meta-llama/Llama-3.2-3B-Instruct"
+    # Judge model (can be 1B or 3B)
+    judge_model_id: str = "meta-llama/Llama-3.2-3B-Instruct"
+    load_in_4bit: bool = False
+    # Red-team loop parameters
+    max_rounds: int = 5
+    max_new_tokens: int = 512
+    temperature: float = 0.7
+
+
+@dataclass
 class PromptConfig:
     """Prompt database generation parameters."""
 
@@ -80,8 +95,9 @@ class ValidationConfig:
     # Length-scale search range (relative, like the paper's LOO CV)
     length_scale_range: tuple[float, float] = (0.05, 0.50)
     length_scale_steps: int = 20
-    # Prior mean search range
-    prior_mean_range: tuple[float, float] = (0.01, 0.08)
+    # Prior mean search range — large unsafe prior: assume dangerous by default
+    # GP predicts high anomaly distance (unsafe) unless data says otherwise
+    prior_mean_range: tuple[float, float] = (0.5, 1.0)
     prior_mean_steps: int = 8
     # LOO cross-validation weighting (from Eq. 21 in the paper)
     # w1 penalizes under-prediction (predicting safe when not safe)
@@ -97,13 +113,10 @@ class ExperimentConfig:
     name: str = "sotif_llm_v1"
     output_dir: Path = Path("experiments")
     model: ModelConfig = field(default_factory=ModelConfig)
+    adversary: AdversaryConfig = field(default_factory=AdversaryConfig)
     prompts: PromptConfig = field(default_factory=PromptConfig)
     envelope: EnvelopeConfig = field(default_factory=EnvelopeConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
-
-    # Paths to existing experiment codebases
-    silent_killers_dir: Path = Path("../silent-killers")
-    redkween_dir: Path = Path("../REDKWEEN")
 
     # Monte Carlo parameters (nested uncertainty propagation, per the paper)
     n_aleatoric: int = 100  # Number of aleatoric samples per prompt
@@ -118,6 +131,9 @@ class ExperimentConfig:
         parser = argparse.ArgumentParser(description="SOTIF-LLM Configuration")
         parser.add_argument("--name", default="sotif_llm_v1")
         parser.add_argument("--model-id", default="meta-llama/Llama-3.1-8B-Instruct")
+        parser.add_argument("--adversary-model", default="meta-llama/Llama-3.2-3B-Instruct")
+        parser.add_argument("--judge-model", default="meta-llama/Llama-3.2-3B-Instruct")
+        parser.add_argument("--max-rounds", type=int, default=5)
         parser.add_argument("--n-benign", type=int, default=5000)
         parser.add_argument("--confidence", type=float, default=0.95)
         parser.add_argument("--method", default="mahalanobis",
@@ -128,6 +144,9 @@ class ExperimentConfig:
         cfg = cls(name=args.name)
         cfg.model.model_id = args.model_id
         cfg.model.device = args.device
+        cfg.adversary.model_id = args.adversary_model
+        cfg.adversary.judge_model_id = args.judge_model
+        cfg.adversary.max_rounds = args.max_rounds
         cfg.prompts.n_benign = args.n_benign
         cfg.envelope.confidence_level = args.confidence
         cfg.envelope.method = args.method
