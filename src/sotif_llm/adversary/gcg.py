@@ -231,6 +231,7 @@ class GCGRunner:
             topk=self.topk,
             seed=self.seed,
             verbosity="WARNING",
+            use_prefix_cache=False,  # avoid DynamicCache incompatibility
         )
 
         result = nanogcg.run(
