@@ -119,6 +119,11 @@ def extract_and_classify(cfg: ExperimentConfig) -> dict:
     Loads the red-team results, extracts SAE features from the target
     model for each response class, computes anomaly distances, and
     assembles the labeled dataset for GP training.
+
+    Distance computation uses the Phase 1 baseline (fitted on 500+
+    benign prompts) rather than a separate baseline from the small
+    Phase 2 benign set.  This avoids rank-deficient covariance when
+    only a handful of benign episodes exist.
     """
     exp_dir = cfg.experiment_dir / "phase2"
 
@@ -176,15 +181,24 @@ def extract_and_classify(cfg: ExperimentConfig) -> dict:
     extraction.save(exp_dir / "features" / "all_features.npz")
     extractor.unload()
 
-    # Compute safe baseline from benign features only
-    benign_mask = labels == 0
-    benign_features = extraction.features[benign_mask]
+    # --- Baseline selection ---
+    # Prefer the Phase 1 baseline (fitted on 500+ benign prompts) for
+    # well-conditioned Mahalanobis.  Fall back to fitting from Phase 2
+    # benign data (with Ledoit-Wolf shrinkage) if Phase 1 is unavailable.
+    phase1_baseline_path = cfg.experiment_dir / "phase1" / "baseline" / "safe_baseline.npz"
+    if phase1_baseline_path.exists():
+        logger.info("Using Phase 1 baseline for distance computation")
+        baseline = SafeBaseline.load(phase1_baseline_path)
+    else:
+        logger.info("Phase 1 baseline not found — fitting from Phase 2 benign data")
+        benign_mask = labels == 0
+        benign_features = extraction.features[benign_mask]
+        baseline_computer = BaselineComputer(
+            method=cfg.envelope.method,
+            top_k_features=cfg.envelope.top_k_features,
+        )
+        baseline = baseline_computer.fit(benign_features)
 
-    baseline_computer = BaselineComputer(
-        method=cfg.envelope.method,
-        top_k_features=cfg.envelope.top_k_features,
-    )
-    baseline = baseline_computer.fit(benign_features)
     baseline.save(exp_dir / "baseline" / "safe_baseline.npz")
 
     # Compute distances for all three classes

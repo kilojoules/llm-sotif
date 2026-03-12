@@ -334,7 +334,7 @@ class TestGCGRedTeamIntegration:
         assert "adversarial_suffix_tokens" in r0.attack
 
     def test_no_warm_start_uses_raw_prompt(self):
-        """Without warm-starts, round 0 uses the raw seed prompt."""
+        """Without warm-starts or LoRA, round 0 uses the raw seed prompt."""
         from sotif_llm.adversary.red_team import RedTeamRunner
 
         runner = RedTeamRunner.__new__(RedTeamRunner)
@@ -368,3 +368,41 @@ class TestGCGRedTeamIntegration:
         )
 
         assert captured[0] == "original"
+
+    def test_lora_round_0_uses_adversary_rewrite(self):
+        """With LoRA enabled and no GCG, round 0 uses adversary rewrite."""
+        from sotif_llm.adversary.red_team import RedTeamRunner
+
+        runner = RedTeamRunner.__new__(RedTeamRunner)
+        runner.model_id = "mock"
+        runner.judge_model_id = "mock"
+        runner.device = "cpu"
+        runner.load_in_4bit = False
+        runner.max_rounds = 0
+        runner.max_new_tokens = 64
+        runner.temperature = 0.7
+        runner.lora_config = None
+        runner.lora_adapter_path = None
+        runner._has_lora = True
+
+        import torch
+        runner._model = MagicMock()
+        runner._model.device = torch.device("cpu")
+        runner._tokenizer = MagicMock()
+        runner._judge = MagicMock()
+        runner._judge.judge.return_value = False
+
+        captured = []
+        runner._target_respond = lambda a: (captured.append(a), "resp")[1]
+        runner._adversary_initial = lambda prompt: "LoRA rewritten: " + prompt
+        runner._adversary_refine = lambda *a: "refined"
+
+        seeds = [{"id": "s1", "category": "bad_coding", "prompt": "original"}]
+        runner.run(
+            jailbreak_prompts=seeds,
+            benign_prompts=[],
+            gcg_warm_starts={},
+        )
+
+        # Round 0 should use the LoRA adversary rewrite, not raw seed
+        assert captured[0] == "LoRA rewritten: original"

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from sklearn.covariance import EmpiricalCovariance, MinCovDet
+from sklearn.covariance import EmpiricalCovariance, LedoitWolf, MinCovDet
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import KernelDensity
 
@@ -189,10 +189,19 @@ class BaselineComputer:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Fit Mahalanobis distance detector.
 
-        Uses robust covariance estimation (MinCovDet) to be resilient
-        to outliers in the benign set.
+        Uses robust covariance estimation (MinCovDet) when n >> p,
+        Ledoit-Wolf shrinkage when n <= 2*p (handles rank-deficient cases),
+        and EmpiricalCovariance as a middle ground.
         """
-        if self.robust_covariance and features.shape[0] > features.shape[1]:
+        n_samples, n_features = features.shape
+
+        if n_samples <= 2 * n_features:
+            # Shrinkage estimator: always well-conditioned, even when n < p
+            logger.info(
+                f"Using Ledoit-Wolf shrinkage (n={n_samples} <= 2*p={2*n_features})"
+            )
+            cov_estimator = LedoitWolf()
+        elif self.robust_covariance:
             cov_estimator = MinCovDet()
         else:
             cov_estimator = EmpiricalCovariance()

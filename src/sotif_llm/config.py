@@ -58,14 +58,14 @@ class LoRAConfig:
     """
 
     enabled: bool = True
-    rank: int = 8
-    alpha: int = 16
+    rank: int = 16
+    alpha: int = 32
     dropout: float = 0.05
     target_modules: list[str] = field(
-        default_factory=lambda: ["q_proj", "v_proj"]
+        default_factory=lambda: ["q_proj", "k_proj", "v_proj", "o_proj"]
     )
     learning_rate: float = 2e-4
-    num_epochs: int = 3
+    num_epochs: int = 10
     max_seq_length: int = 512
     gradient_accumulation_steps: int = 4
 

@@ -128,6 +128,56 @@ class TestBaselineWithSyntheticFeatures:
 # Baseline save/load roundtrip
 # ---------------------------------------------------------------------------
 
+class TestLedoitWolfFallback:
+    """Verify Ledoit-Wolf shrinkage handles n < p correctly."""
+
+    def test_small_sample_outlier_separation(self):
+        """With n=8, p=512, outliers should still be farther than benign."""
+        rng = np.random.default_rng(42)
+        benign = rng.normal(loc=0.0, scale=1.0, size=(8, 512))
+        outlier = rng.normal(loc=5.0, scale=1.0, size=(3, 512))
+
+        computer = BaselineComputer(method="mahalanobis", top_k_features=0)
+        baseline = computer.fit(benign)
+
+        d_benign = compute_distance(benign, baseline)
+        d_outlier = compute_distance(outlier, baseline)
+
+        # Outliers should be farther than benign mean
+        assert np.mean(d_outlier) > np.mean(d_benign), \
+            "Outliers should be farther from baseline than benign"
+
+    def test_degenerate_case_not_all_identical(self):
+        """With n=8, p=512, distances should not be exactly identical
+        (the sqrt(n-1) collapse from rank-deficient pseudoinverse)."""
+        rng = np.random.default_rng(42)
+        benign = rng.normal(loc=0.0, scale=0.5, size=(8, 65536))
+
+        computer = BaselineComputer(method="mahalanobis", top_k_features=512)
+        baseline = computer.fit(benign)
+
+        distances = compute_distance(benign, baseline)
+        # Old bug: all distances = sqrt(7) ≈ 2.6458, std = exactly 0
+        # With Ledoit-Wolf shrinkage: distances vary (std > 0)
+        assert np.std(distances) > 0, \
+            "Distances are all identical — covariance likely rank-deficient"
+
+    def test_well_conditioned_case_unaffected(self):
+        """When n > 2*p, Ledoit-Wolf is not used and distances are correct."""
+        rng = np.random.default_rng(42)
+        benign = rng.normal(loc=0.0, scale=1.0, size=(100, 32))
+        outlier = rng.normal(loc=4.0, scale=1.0, size=(10, 32))
+
+        computer = BaselineComputer(method="mahalanobis", top_k_features=0)
+        baseline = computer.fit(benign)
+
+        d_benign = compute_distance(benign, baseline)
+        d_outlier = compute_distance(outlier, baseline)
+
+        assert np.mean(d_outlier) > 2 * np.mean(d_benign), \
+            "Well-conditioned case should strongly separate outliers"
+
+
 class TestBaselineSerialization:
 
     def test_save_load_mahalanobis(self, tmp_path):

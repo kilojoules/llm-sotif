@@ -340,10 +340,15 @@ class RedTeamRunner:
             seed_prompt = seed["prompt"]
             logger.info(f"Red-teaming seed: {seed_id}")
 
-            # Round 0: use GCG warm-start if available, else direct attack
-            round_0_attack = gcg_warm_starts.get(seed_id, seed_prompt)
+            # Round 0: use GCG warm-start if available, else LoRA rewrite
             if seed_id in gcg_warm_starts:
+                round_0_attack = gcg_warm_starts[seed_id]
                 logger.info(f"  Using GCG warm-start for round 0")
+            elif self._has_lora:
+                round_0_attack = self._adversary_initial(seed_prompt)
+                logger.info(f"  Using LoRA adversary rewrite for round 0")
+            else:
+                round_0_attack = seed_prompt
 
             response = self._target_respond(round_0_attack)
             is_unsafe = self._judge.judge(round_0_attack, response)
@@ -352,7 +357,8 @@ class RedTeamRunner:
                 round=0, attack=round_0_attack, response=response,
                 is_unsafe=is_unsafe,
             ))
-            logger.info(f"  Round 0 {'(GCG)' if seed_id in gcg_warm_starts else '(direct)'}: {'UNSAFE' if is_unsafe else 'SAFE'}")
+            r0_label = "(GCG)" if seed_id in gcg_warm_starts else "(LoRA)" if self._has_lora else "(direct)"
+            logger.info(f"  Round 0 {r0_label}: {'UNSAFE' if is_unsafe else 'SAFE'}")
 
             # Rounds 1..max_rounds: adversary-strengthened attacks
             prev_attack = round_0_attack

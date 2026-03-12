@@ -74,14 +74,16 @@ The suffixes are nonsensical text that reliably bypasses safety training.
 
 ## LoRA Adversary Fine-Tuning
 
-The adversary model is fine-tuned with a LoRA adapter on ~10 curated
-jailbreak rewriting examples covering proven attack techniques.  The
+The adversary model is fine-tuned with a LoRA adapter on ~25 curated
+jailbreak rewriting examples covering 12+ attack techniques (persona
+injection, continuation, multi-step, ethical inversion, etc.).  The
 adapter is toggled on for adversary generation and off for target/judge
-generation (single model instance, no extra memory).
+generation (single model instance, no extra memory).  Round 0 also
+uses the LoRA adversary rewrite (not the raw seed).
 
 - Uses `peft` (already a dependency)
-- Default: rank=8, alpha=16, target_modules=["q_proj", "v_proj"], 3 epochs
-- Training takes seconds (~10 short examples)
+- Default: rank=16, alpha=32, target_modules=["q_proj", "k_proj", "v_proj", "o_proj"], 10 epochs
+- Training takes seconds (~25 short examples)
 - Configure via `LoRAConfig` or CLI: `--lora-rank 16`, `--lora-epochs 5`, `--no-lora`
 
 ## Unsafe Behavior Categories

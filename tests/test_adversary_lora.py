@@ -27,19 +27,19 @@ class TestLoRAConfig:
     def test_defaults(self):
         cfg = LoRAConfig()
         assert cfg.enabled is True
-        assert cfg.rank == 8
-        assert cfg.alpha == 16
+        assert cfg.rank == 16
+        assert cfg.alpha == 32
         assert cfg.dropout == 0.05
-        assert cfg.target_modules == ["q_proj", "v_proj"]
+        assert cfg.target_modules == ["q_proj", "k_proj", "v_proj", "o_proj"]
         assert cfg.learning_rate == 2e-4
-        assert cfg.num_epochs == 3
+        assert cfg.num_epochs == 10
         assert cfg.max_seq_length == 512
         assert cfg.gradient_accumulation_steps == 4
 
     def test_custom_values(self):
-        cfg = LoRAConfig(rank=16, alpha=32, num_epochs=5, enabled=False)
-        assert cfg.rank == 16
-        assert cfg.alpha == 32
+        cfg = LoRAConfig(rank=8, alpha=16, num_epochs=5, enabled=False)
+        assert cfg.rank == 8
+        assert cfg.alpha == 16
         assert cfg.num_epochs == 5
         assert cfg.enabled is False
 
@@ -75,8 +75,8 @@ class TestLoRATrainingData:
 
     def test_techniques_are_diverse(self):
         techniques = {ex["technique"] for ex in self.examples}
-        # Should have at least 5 distinct techniques
-        assert len(techniques) >= 5, f"Only {len(techniques)} techniques: {techniques}"
+        # Should have at least 10 distinct techniques
+        assert len(techniques) >= 10, f"Only {len(techniques)} techniques: {techniques}"
 
     def test_categories_covered(self):
         categories = {ex["category"] for ex in self.examples}
@@ -84,7 +84,7 @@ class TestLoRATrainingData:
         assert categories == expected, f"Missing categories: {expected - categories}"
 
     def test_minimum_example_count(self):
-        assert len(self.examples) >= 8
+        assert len(self.examples) >= 20
 
     def test_outputs_differ_from_inputs(self):
         for ex in self.examples:
