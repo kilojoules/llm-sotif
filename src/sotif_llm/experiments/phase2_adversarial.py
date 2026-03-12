@@ -89,6 +89,12 @@ def run_red_team_campaign(
     exp_dir = cfg.experiment_dir / "phase2"
     exp_dir.mkdir(parents=True, exist_ok=True)
 
+    lora_config = cfg.adversary.lora if cfg.adversary.lora.enabled else None
+    lora_adapter_path = (
+        cfg.experiment_dir / "phase2" / "lora_adapter"
+        if lora_config is not None else None
+    )
+
     runner = RedTeamRunner(
         model_id=cfg.adversary.model_id,
         judge_model_id=cfg.adversary.judge_model_id,
@@ -97,6 +103,8 @@ def run_red_team_campaign(
         max_rounds=cfg.adversary.max_rounds,
         max_new_tokens=cfg.adversary.max_new_tokens,
         temperature=cfg.adversary.temperature,
+        lora_config=lora_config,
+        lora_adapter_path=lora_adapter_path,
     )
 
     result = runner.run(gcg_warm_starts=gcg_warm_starts)

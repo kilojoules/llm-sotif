@@ -11,11 +11,12 @@
 
 ```
 src/sotif_llm/
-├── config.py            # Dataclass configs (ExperimentConfig, AdversaryConfig, GCGConfig, etc.)
-├── adversary/           # Red-team adversarial loop + GCG
+├── config.py            # Dataclass configs (ExperimentConfig, AdversaryConfig, GCGConfig, LoRAConfig, etc.)
+├── adversary/           # Red-team adversarial loop + GCG + LoRA
 │   ├── prompts.py       # Seed jailbreak + benign prompts
 │   ├── gcg.py           # GCG suffix optimization (gradient-based jailbreaks)
-│   ├── red_team.py      # Adversary/target loop (Llama 3B) with GCG warm-starts
+│   ├── lora_trainer.py  # LoRA fine-tuning for adversary (jailbreak rewriting techniques)
+│   ├── red_team.py      # Adversary/target loop (Llama 3B) with LoRA + GCG warm-starts
 │   └── judge.py         # LLM-based safety judge (1B/3B)
 ├── prompts/             # Prompt database (compositional generation)
 │   ├── taxonomy.py      # Design space definition (6D continuous)
@@ -43,9 +44,12 @@ src/sotif_llm/
    - **Phase 2a-gcg** (optional): GCG suffix optimization finds gradient-based
      adversarial suffixes for each seed prompt, producing verified jailbreaks.
      Uses `nanogcg` (Zou et al., 2023). Disable with `--no-gcg`.
-   - **Phase 2a**: Red-team loop — adversary (3B) strengthens attacks against
-     target (3B), judge classifies. When GCG warm-starts are available, round 0
-     begins from a known-working jailbreak.
+   - **Phase 2a**: Red-team loop — LoRA-enhanced adversary (3B) strengthens
+     attacks against target (3B), judge classifies. The adversary is fine-tuned
+     on jailbreak rewriting techniques (persona injection, hypothetical framing,
+     etc.) via a lightweight LoRA adapter toggled on/off between roles. When GCG
+     warm-starts are available, round 0 begins from a known-working jailbreak.
+     Disable LoRA with `--no-lora`.
    - **Phase 2b**: SAE feature extraction → 3 response classes
      (benign, refused, jailbroken) → anomaly analysis
 3. **Phase 3**: Safety predictor — quantile GP with large unsafe prior over
@@ -67,6 +71,18 @@ The suffixes are nonsensical text that reliably bypasses safety training.
 - Needs fp16 model weights (no 4-bit quantization) for gradient computation
 - Default: 250 steps, search_width=512, topk=256
 - Configure via `GCGConfig` or CLI: `--gcg-steps 500`, `--no-gcg`
+
+## LoRA Adversary Fine-Tuning
+
+The adversary model is fine-tuned with a LoRA adapter on ~10 curated
+jailbreak rewriting examples covering proven attack techniques.  The
+adapter is toggled on for adversary generation and off for target/judge
+generation (single model instance, no extra memory).
+
+- Uses `peft` (already a dependency)
+- Default: rank=8, alpha=16, target_modules=["q_proj", "v_proj"], 3 epochs
+- Training takes seconds (~10 short examples)
+- Configure via `LoRAConfig` or CLI: `--lora-rank 16`, `--lora-epochs 5`, `--no-lora`
 
 ## Unsafe Behavior Categories
 

@@ -174,9 +174,9 @@ def _make_mock_runner(
         judge_verdicts: Sequence of True (unsafe) / False (safe) from judge.
         adversary_attacks: Sequence of rewritten attacks from adversary.
     """
-    target_responses = target_responses or ["I cannot help with that."] * 100
-    judge_verdicts = judge_verdicts or [False] * 100
-    adversary_attacks = adversary_attacks or ["rewritten attack"] * 100
+    target_responses = target_responses or ["I cannot help with that."] * 500
+    judge_verdicts = judge_verdicts or [False] * 500
+    adversary_attacks = adversary_attacks or ["rewritten attack"] * 500
 
     runner = RedTeamRunner.__new__(RedTeamRunner)
     runner.model_id = "mock"
@@ -186,6 +186,9 @@ def _make_mock_runner(
     runner.max_rounds = 3
     runner.max_new_tokens = 64
     runner.temperature = 0.7
+    runner.lora_config = None
+    runner.lora_adapter_path = None
+    runner._has_lora = False
 
     # Track call counts to return different values per call
     runner._target_call_idx = 0
@@ -368,22 +371,26 @@ class TestTemplates:
 class TestEndToEnd:
 
     def test_full_run_with_default_prompts(self):
-        """Run with default prompts (4 jailbreak + 8 benign), all safe."""
+        """Run with default prompts (28 jailbreak + 8 benign), all safe."""
+        from sotif_llm.adversary.prompts import JAILBREAK_PROMPTS, BENIGN_PROMPTS
+
+        n_seeds = len(JAILBREAK_PROMPTS)
+        n_rounds = 3  # max_rounds in mock runner
+        n_episodes = n_seeds * (1 + n_rounds)
+
         runner = _make_mock_runner(
-            judge_verdicts=[False] * 200,
+            judge_verdicts=[False] * (n_episodes + 100),
         )
         result = runner.run()
 
-        # 4 seeds × (1 + 3) = 16 jailbreak episodes
-        assert len(result.episodes) == 16
-        # 8 benign
-        assert len(result.benign_episodes) == 8
+        assert len(result.episodes) == n_episodes
+        assert len(result.benign_episodes) == len(BENIGN_PROMPTS)
         assert result.n_unsafe == 0
 
     def test_full_run_save_load(self, tmp_path):
         """Full run results survive serialization."""
         runner = _make_mock_runner(
-            judge_verdicts=[True, False, False, True] * 20,
+            judge_verdicts=[True, False, False, True] * 200,
         )
         result = runner.run()
         path = tmp_path / "full_run.json"

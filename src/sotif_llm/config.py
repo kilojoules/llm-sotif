@@ -47,6 +47,30 @@ class GCGConfig:
 
 
 @dataclass
+class LoRAConfig:
+    """LoRA adapter parameters for adversary fine-tuning.
+
+    Trains a lightweight adapter so the adversary learns effective
+    jailbreak rewriting techniques (persona injection, hypothetical
+    framing, etc.) without modifying the base model weights.  The
+    adapter is toggled on for adversary generation and off for
+    target/judge generation.
+    """
+
+    enabled: bool = True
+    rank: int = 8
+    alpha: int = 16
+    dropout: float = 0.05
+    target_modules: list[str] = field(
+        default_factory=lambda: ["q_proj", "v_proj"]
+    )
+    learning_rate: float = 2e-4
+    num_epochs: int = 3
+    max_seq_length: int = 512
+    gradient_accumulation_steps: int = 4
+
+
+@dataclass
 class AdversaryConfig:
     """Red-team adversary, target, and judge configuration."""
 
@@ -61,6 +85,8 @@ class AdversaryConfig:
     temperature: float = 0.7
     # GCG suffix optimization (warm-start for adversary loop)
     gcg: GCGConfig = field(default_factory=GCGConfig)
+    # LoRA fine-tuning for the adversary
+    lora: LoRAConfig = field(default_factory=LoRAConfig)
 
 
 @dataclass
@@ -156,6 +182,10 @@ class ExperimentConfig:
         parser.add_argument("--gcg-steps", type=int, default=250)
         parser.add_argument("--no-gcg", action="store_true",
                             help="Disable GCG warm-start optimization")
+        parser.add_argument("--no-lora", action="store_true",
+                            help="Disable LoRA adversary fine-tuning")
+        parser.add_argument("--lora-rank", type=int, default=8)
+        parser.add_argument("--lora-epochs", type=int, default=3)
         parser.add_argument("--n-benign", type=int, default=5000)
         parser.add_argument("--confidence", type=float, default=0.95)
         parser.add_argument("--method", default="mahalanobis",
@@ -171,6 +201,9 @@ class ExperimentConfig:
         cfg.adversary.max_rounds = args.max_rounds
         cfg.adversary.gcg.enabled = not args.no_gcg
         cfg.adversary.gcg.num_steps = args.gcg_steps
+        cfg.adversary.lora.enabled = not args.no_lora
+        cfg.adversary.lora.rank = args.lora_rank
+        cfg.adversary.lora.num_epochs = args.lora_epochs
         cfg.prompts.n_benign = args.n_benign
         cfg.envelope.confidence_level = args.confidence
         cfg.envelope.method = args.method

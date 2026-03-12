@@ -2,10 +2,15 @@
 
 Uses a Llama 3B model in two roles:
   - Adversary: rewrites jailbreak prompts to bypass safety filters
-  - Target: the model being attacked (same weights, no system prompt)
+    (optionally LoRA-enhanced for stronger attacks)
+  - Target: the model being attacked (base weights, no system prompt)
 
 The adversary iteratively strengthens attacks based on whether the
 target refused or complied. A separate judge model classifies outcomes.
+
+When LoRA is enabled, a lightweight adapter is trained on jailbreak
+rewriting examples and toggled on/off between adversary and target
+generation, keeping both roles on a single model instance.
 """
 
 from __future__ import annotations
@@ -111,6 +116,10 @@ class RedTeamRunner:
     Both adversary and target use the same model weights (Llama 3B).
     The adversary gets a red-team system prompt; the target gets no
     system prompt (raw instruction-following mode).
+
+    When *lora_config* is provided, a LoRA adapter is trained on
+    jailbreak rewriting examples and toggled on for adversary
+    generation, off for target/judge generation.
     """
 
     def __init__(
@@ -122,6 +131,8 @@ class RedTeamRunner:
         max_rounds: int = 5,
         max_new_tokens: int = 512,
         temperature: float = 0.7,
+        lora_config=None,
+        lora_adapter_path: Path | None = None,
     ):
         self.model_id = model_id
         self.judge_model_id = judge_model_id
@@ -130,13 +141,30 @@ class RedTeamRunner:
         self.max_rounds = max_rounds
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
+        self.lora_config = lora_config
+        self.lora_adapter_path = lora_adapter_path
 
         self._model = None
         self._tokenizer = None
         self._judge = None
+        self._has_lora = False
+
+    def _enable_adversary_mode(self) -> None:
+        """Enable LoRA adapter for adversary generation."""
+        if self._has_lora:
+            self._model.enable_adapter_layers()
+
+    def _enable_target_mode(self) -> None:
+        """Disable LoRA adapter for target/judge generation."""
+        if self._has_lora:
+            self._model.disable_adapter_layers()
 
     def load(self) -> None:
-        """Load the shared adversary/target model."""
+        """Load the shared adversary/target model.
+
+        If LoRA is configured, trains or loads the adapter after
+        loading the base model.
+        """
         logger.info(f"Loading adversary/target model: {self.model_id}")
         kwargs = {"device_map": "auto"}
         if self.load_in_4bit:
@@ -155,6 +183,40 @@ class RedTeamRunner:
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
+
+        # Apply LoRA if configured
+        if self.lora_config is not None:
+            from .lora_trainer import LoRATrainer
+
+            if (self.lora_adapter_path is not None
+                    and self.lora_adapter_path.exists()):
+                logger.info("Loading existing LoRA adapter...")
+                self._model = LoRATrainer.load_adapter(
+                    self._model, self.lora_adapter_path,
+                )
+            else:
+                logger.info("Training LoRA adapter for adversary...")
+                trainer = LoRATrainer(
+                    rank=self.lora_config.rank,
+                    alpha=self.lora_config.alpha,
+                    dropout=self.lora_config.dropout,
+                    target_modules=self.lora_config.target_modules,
+                    learning_rate=self.lora_config.learning_rate,
+                    num_epochs=self.lora_config.num_epochs,
+                    max_seq_length=self.lora_config.max_seq_length,
+                    gradient_accumulation_steps=self.lora_config.gradient_accumulation_steps,
+                )
+                self._model = trainer.train(self._model, self._tokenizer)
+
+                # Save adapter for reuse
+                if self.lora_adapter_path is not None:
+                    LoRATrainer.save_adapter(
+                        self._model, self.lora_adapter_path,
+                    )
+
+            self._has_lora = True
+            # Start in target mode (LoRA off) by default
+            self._enable_target_mode()
 
         # Load judge (may be same or different model)
         self._judge = JudgeModel(
@@ -197,6 +259,7 @@ class RedTeamRunner:
 
     def _adversary_initial(self, seed_prompt: str) -> str:
         """Generate the first adversarial rewrite of a seed prompt."""
+        self._enable_adversary_mode()
         messages = [
             {"role": "system", "content": ADVERSARY_SYSTEM_PROMPT},
             {"role": "user", "content": (
@@ -204,7 +267,9 @@ class RedTeamRunner:
                 f"{seed_prompt}"
             )},
         ]
-        return self._generate(messages)
+        result = self._generate(messages)
+        self._enable_target_mode()
+        return result
 
     def _adversary_refine(
         self,
@@ -214,6 +279,7 @@ class RedTeamRunner:
         succeeded: bool,
     ) -> str:
         """Generate a refined attack based on the target's response."""
+        self._enable_adversary_mode()
         outcome = "complied (try to make the attack even more effective)" if succeeded else "refused"
         messages = [
             {"role": "system", "content": ADVERSARY_SYSTEM_PROMPT},
@@ -224,10 +290,13 @@ class RedTeamRunner:
                 outcome=outcome,
             )},
         ]
-        return self._generate(messages)
+        result = self._generate(messages)
+        self._enable_target_mode()
+        return result
 
     def _target_respond(self, attack: str) -> str:
         """Get the target model's response (no system prompt)."""
+        self._enable_target_mode()
         messages = [{"role": "user", "content": attack}]
         return self._generate(messages, temperature=0.0)
 

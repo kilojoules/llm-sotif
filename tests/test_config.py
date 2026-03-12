@@ -10,6 +10,7 @@ from sotif_llm.config import (
     EnvelopeConfig,
     ExperimentConfig,
     GCGConfig,
+    LoRAConfig,
     ModelConfig,
     PromptConfig,
     ValidationConfig,
@@ -42,6 +43,11 @@ class TestAdversaryConfig:
         cfg = AdversaryConfig()
         assert hasattr(cfg, "gcg")
         assert isinstance(cfg.gcg, GCGConfig)
+
+    def test_has_lora_config(self):
+        cfg = AdversaryConfig()
+        assert hasattr(cfg, "lora")
+        assert isinstance(cfg.lora, LoRAConfig)
 
 
 class TestGCGConfig:

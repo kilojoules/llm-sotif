@@ -293,6 +293,9 @@ class TestGCGRedTeamIntegration:
         runner.max_rounds = 1
         runner.max_new_tokens = 64
         runner.temperature = 0.7
+        runner.lora_config = None
+        runner.lora_adapter_path = None
+        runner._has_lora = False
 
         import torch
         runner._model = MagicMock()
@@ -342,6 +345,9 @@ class TestGCGRedTeamIntegration:
         runner.max_rounds = 0
         runner.max_new_tokens = 64
         runner.temperature = 0.7
+        runner.lora_config = None
+        runner.lora_adapter_path = None
+        runner._has_lora = False
 
         import torch
         runner._model = MagicMock()

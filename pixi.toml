@@ -3,7 +3,8 @@ name = "sotif-llm"
 version = "0.1.0"
 description = "Mechanistic ODD: Continuous SOTIF Validation of LLMs via Sparse Autoencoders"
 authors = ["Julian Quick"]
-requires-python = ">=3.11"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
 
 [dependencies]
 python = "3.11.*"
