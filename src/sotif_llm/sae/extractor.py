@@ -157,12 +157,14 @@ class SAEExtractor:
                     output_hidden_states=True,
                 )
 
-            # Get hidden state at target layer, mean-pool over sequence
+            # Get hidden state at target layer — use last token (not mean pool).
+            # The SAE was trained on per-token activations, so mean-pooling
+            # produces OOD vectors that cause near-zero sparse features,
+            # especially for long sequences. The last token's hidden state
+            # captures the model's summary of the full input.
             hs = outputs.hidden_states[self.layer_idx]  # (1, seq_len, hidden_dim)
-            # Mean pool (excluding padding)
-            mask = inputs["attention_mask"].unsqueeze(-1).float()
-            pooled = (hs * mask).sum(dim=1) / mask.sum(dim=1)  # (1, hidden_dim)
-            all_states.append(pooled.squeeze(0).float().cpu())
+            last_token_hs = hs[:, -1, :]  # (1, hidden_dim)
+            all_states.append(last_token_hs.squeeze(0).float().cpu())
 
         return torch.stack(all_states)  # (n_texts, hidden_dim)
 
