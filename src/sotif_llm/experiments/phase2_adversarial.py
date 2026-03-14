@@ -140,23 +140,25 @@ def extract_and_classify(cfg: ExperimentConfig) -> dict:
         f"{len(jailbroken)} jailbroken"
     )
 
-    # Collect all texts for SAE extraction (prompt + response concatenated)
+    # Collect attack prompts for SAE extraction (prompt only, matching Phase 1)
+    # The SAE baseline is fitted on prompt-only activations in Phase 1, so
+    # Phase 2 must also extract from prompts to stay in-distribution.
     all_texts = []
     all_ids = []
     all_labels = []  # 0=benign, 1=refused, 2=jailbroken
 
     for i, ep in enumerate(benign):
-        all_texts.append(f"{ep.attack}\n\n{ep.response}")
+        all_texts.append(ep.attack)
         all_ids.append(f"benign_{i}")
         all_labels.append(0)
 
     for i, ep in enumerate(refused):
-        all_texts.append(f"{ep.attack}\n\n{ep.response}")
+        all_texts.append(ep.attack)
         all_ids.append(f"refused_{i}")
         all_labels.append(1)
 
     for i, ep in enumerate(jailbroken):
-        all_texts.append(f"{ep.attack}\n\n{ep.response}")
+        all_texts.append(ep.attack)
         all_ids.append(f"jailbroken_{i}")
         all_labels.append(2)
 

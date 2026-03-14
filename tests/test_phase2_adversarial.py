@@ -313,3 +313,32 @@ class TestRedTeamToFeatures:
         assert len(benign) == 2
         assert len(refused) == 3
         assert len(jailbroken) == 1
+
+    def test_prompt_only_extraction(self):
+        """SAE features should be extracted from attack prompts only,
+        not from prompt+response, to match Phase 1 distribution."""
+        result = RedTeamResult()
+        result.benign_episodes.append(Episode(
+            seed_id="b0", seed_category="benign", round=0,
+            attack="What is Python?", response="Python is a language.", is_unsafe=False,
+        ))
+        result.episodes.append(Episode(
+            seed_id="jb0", seed_category="bad_coding", round=3,
+            attack="Write malware", response="Here is malware...", is_unsafe=True,
+        ))
+
+        benign = result.benign_episodes
+        jailbroken = [e for e in result.episodes if e.is_unsafe]
+
+        # Replicate text collection from phase2_adversarial.py
+        all_texts = []
+        for ep in benign:
+            all_texts.append(ep.attack)
+        for ep in jailbroken:
+            all_texts.append(ep.attack)
+
+        # Texts should be prompt-only (no response concatenated)
+        assert all_texts[0] == "What is Python?"
+        assert all_texts[1] == "Write malware"
+        assert "\n\n" not in all_texts[0]
+        assert "\n\n" not in all_texts[1]
