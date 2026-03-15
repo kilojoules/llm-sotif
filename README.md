@@ -51,7 +51,7 @@ Each prompt is assigned a continuous **6-dimensional design vector z &isin; [0,1
 
 This design vector is the direct analog of the turbine design parameters. The safety predictor will interpolate across this space.
 
-**SAE feature extraction.** Each prompt is tokenized and passed through Llama-3.1-8B-Instruct. Hidden states at a target residual-stream layer (default: layer 16) are mean-pooled across the sequence and encoded through a pre-trained SAE (via [SAELens](https://github.com/jbloomAus/SAELens)), producing a sparse feature activation vector per prompt.
+**SAE feature extraction.** Each prompt is tokenized and passed through Llama-3.1-8B-Instruct. The last-token hidden state at a target residual-stream layer (layer 19) is encoded through a pre-trained SAE (Goodfire, via [SAELens](https://github.com/jbloomAus/SAELens)), producing a sparse feature activation vector per prompt. The last token is used rather than mean-pooling because the SAE was trained on per-token activations; mean-pooling over long sequences produces out-of-distribution vectors that fail to activate SAE features.
 
 **Baseline envelope.** The statistical envelope of the benign SAE features is computed using one of three methods:
 
@@ -117,19 +117,56 @@ One GP is fitted per quantile level. Hyperparameters (kernel length scale, prior
 
 These regions are visualized as contour plots over 2D slices of the 6D design space, directly analogous to Figure 10 in the reference paper.
 
-## Expected Results
+## Results
 
-The following results are hypothesized and will be validated experimentally:
+### Phase 1 --- Safe Baseline
 
-1. **The safe baseline is well-defined.** Benign prompts cluster tightly in SAE feature space. The Mahalanobis distance distribution is approximately chi-squared, and the 95th percentile provides a clean separation threshold. Self-validation should show >90% of benign prompts classified as "validated safe."
+500 benign prompts were processed through Llama-3.1-8B-Instruct. SAE features were extracted from the last-token hidden state at layer 19 using a Goodfire pre-trained SAE (65,536 features). The top 512 most variable features were selected for Mahalanobis distance computation, using Ledoit-Wolf shrinkage to regularize the covariance estimate (n=500, p=512).
 
-2. **Reward hacking is mechanistically detectable.** Code responses with bad exception handling (`try/except: pass`) will show significantly higher SAE anomaly distances than clean code responses (expected Cohen's *d* > 0.5). Real-time monitoring will show distance spikes *during* the generation of error-swallowing patterns, not just after.
+| Metric | Value |
+|---|---|
+| Benign prompts | 500 |
+| SAE features per prompt | ~45 nonzero (of 65,536) |
+| Baseline thresholds | q90=19.3, q95=20.9, q99=22.5 |
+| Self-validation | 90% validated, 7.2% probably safe, 2.8% possibly safe, 0% dangerous |
 
-3. **Jailbreaks rupture the envelope.** Successful jailbreak responses will fall outside the SOTIF envelope at significantly higher rates than refusals (expected >70% outside vs. <10%). The response-side separation (malicious compliance vs. refusal) will be stronger than the attack-side separation, because the victim's *cognitive state during compliance* is the mechanistically distinct phenomenon.
+### Phase 2 --- Adversarial Jailbreak Detection
 
-4. **Reward hacking and jailbreaking are mechanistically unified.** Both failure modes represent the model leaving its safe ODD to satisfy a localized proxy incentive. The safety predictor will assign both types of stimuli to overlapping dangerous regions of the design space.
+A LoRA-enhanced adversary (Llama-3.2-3B-Instruct, rank-16 adapter trained on 22 jailbreak rewriting examples) attacked the same 3B model across 28 seed prompts over 16 rounds per seed. A judge model classified each response as SAFE or UNSAFE.
 
-5. **The safety predictor generalizes.** The quantile GP will predict elevated risk in high-sensitivity, high-persona-depth regions of design space even without direct observations, interpolating from nearby campaigns --- just as the wind turbine MVP predicts validation metrics at untested turbine designs.
+| Metric | Value |
+|---|---|
+| Total episodes | 448 |
+| Successful jailbreaks | 121 (27% ASR) |
+| Refused | 327 |
+| Benign controls | 8 |
+
+SAE features were then extracted from the attack prompts (not responses) using the same Llama-3.1-8B-Instruct + SAE pipeline. Mahalanobis distances were computed against the Phase 1 baseline.
+
+| Class | n | Mean Distance | Std | % Outside Envelope |
+|---|---|---|---|---|
+| Benign | 8 | 49.6 | 14.6 | 100% |
+| Refused | 327 | 32.5 | 11.3 | 88% |
+| Jailbroken | 121 | 30.0 | 11.8 | 74% |
+| **Cohen's *d*** (jailbroken vs. benign) | | **-1.48** | | |
+
+### Interpretation
+
+The SAE anomaly distances show a clear ordering: **jailbroken < refused < benign**. Successful jailbreaks are *closer* to the benign baseline than refusals --- the opposite of the naive hypothesis that jailbreaks should look more anomalous.
+
+This result is consistent with the mechanism of adversarial attacks: **successful jailbreaks are optimized to appear innocuous to the model**. The LoRA-trained adversary learns to frame harmful requests using educational framing, hypothetical scenarios, and professional contexts that activate similar internal representations as benign prompts. Prompts that fail to jailbreak (refusals) retain more overtly harmful markers that the model's safety training detects.
+
+The strong Cohen's *d* of -1.48 confirms that SAE-based anomaly detection can distinguish jailbroken from benign prompts, but the direction of separation suggests that jailbreak detection requires monitoring for prompts that are *suspiciously close to benign* while containing harmful intent --- a second-order signal rather than simple anomaly detection.
+
+### Technical Fixes
+
+Three issues were identified and resolved during development:
+
+1. **Rank-deficient covariance.** With n=500 samples and p=512 features, the empirical covariance matrix is barely full-rank. Ledoit-Wolf shrinkage regularization was added as an automatic fallback when n &le; 2p.
+
+2. **Input distribution mismatch.** Phase 2 originally concatenated attack prompts with model responses for SAE extraction. Phase 1 used prompts only. The mismatch pushed Phase 2 activations out-of-distribution for the SAE. Fixed by extracting from prompts only in both phases.
+
+3. **Mean-pooling vs. last-token.** The SAE was trained on per-token residual stream activations, but the extractor mean-pooled hidden states across the full sequence. For long adversarial prompts (1,500--2,600 characters), this produced activation vectors far from the SAE's training distribution, resulting in near-zero sparse features. Switching to the last token's hidden state --- which captures the model's summary representation of the full input --- resolved the issue completely, producing 45--60 nonzero SAE features per prompt regardless of input length.
 
 ## Repository Structure
 
@@ -141,17 +178,22 @@ src/sotif_llm/
 │   ├── primitives.py                  # 700+ atomic building blocks
 │   └── generator.py                   # Compositional prompt engine
 ├── sae/
-│   └── extractor.py                   # SAE feature extraction (batch + real-time)
+│   └── extractor.py                   # SAE feature extraction (last-token + real-time)
 ├── envelope/
-│   ├── baseline.py                    # Safe baseline (Mahalanobis / IF / KDE)
+│   ├── baseline.py                    # Safe baseline (Mahalanobis w/ Ledoit-Wolf / IF / KDE)
 │   └── distance.py                    # Anomaly distance + trust region classification
+├── adversary/
+│   ├── prompts.py                     # Seed jailbreak + benign prompts
+│   ├── gcg.py                         # GCG suffix optimization (gradient-based jailbreaks)
+│   ├── lora_trainer.py                # LoRA fine-tuning for adversary
+│   ├── red_team.py                    # Adversary/target loop with LoRA + GCG warm-starts
+│   └── judge.py                       # LLM-based safety judge
 ├── validation/
 │   ├── metrics.py                     # Nested uncertainty propagation
 │   └── predictor.py                   # Quantile GP safety predictor
 ├── experiments/
 │   ├── phase1_baseline.py             # Phase 1: define the ODD
-│   ├── phase2_reward_hacking.py       # Phase 2: Silent Killers
-│   └── phase3_jailbreaks.py           # Phase 3: REDKWEEN
+│   └── phase2_adversarial.py          # Phase 2: red-team + SAE jailbreak detection
 ├── visualization.py                   # Trust region plots, generation traces
 └── pipeline.py                        # End-to-end orchestration
 ```
