@@ -1,5 +1,7 @@
 # Mechanistic ODDs: Continuous SOTIF Validation of Large Language Models via Sparse Autoencoders
 
+> **TL;DR** — We borrow the *Operational Design Domain* concept from autonomous vehicle safety (ISO 21448 SOTIF) and apply it to LLMs. Sparse Autoencoder activations define a "safe envelope" for Llama-3.1-8B-Instruct; a quantile Gaussian process predicts where in prompt space the model is likely to leave that envelope. Key finding: successful jailbreaks land *closer* to the benign baseline than refusals (Cohen's *d* = −1.48), suggesting adversarial prompts are optimized to *mimic* safe internal states — so detection requires looking for inputs that are suspiciously normal, not obviously anomalous.
+
 ## Motivation
 
 Current AI safety evaluation relies on behavioral testing: ask the model a dangerous question, check if the output is harmful. But as models become more capable, behavioral evaluation is failing. A model can appear aligned while secretly generating malicious code (*reward hacking*) or breaking under complex adversarial roleplay (*jailbreaking*). These failure modes are invisible to output-only evaluation.
